@@ -1,6 +1,5 @@
 import {type Context as BaseContext} from 'grammy';
 import {
-  getAdditionalState,
   isContextReplyToMessage,
   isReplyToQuestion,
   type ReplyToMessageContext,
@@ -10,6 +9,7 @@ import {
 } from './identifier.js';
 
 type ConstOrPromise<T> = T | Promise<T>;
+export let questions: any[] = []
 
 export class StatelessQuestion<Context extends BaseContext> {
   constructor(
@@ -18,19 +18,18 @@ export class StatelessQuestion<Context extends BaseContext> {
       context: ReplyToMessageContext<Context>,
       additionalState: string,
     ) => ConstOrPromise<void>,
-  ) {}
+  ) {
+  }
 
   middleware(): (context: Context, next: () => Promise<void>) => Promise<void> {
     return async (context, next) => {
       if (
-        isContextReplyToMessage(context)
-        && isReplyToQuestion(context, this.uniqueIdentifier)
+        // @ts-ignore
+        (context.message && context.message.text && this.inQuestions(context.from.id, this.uniqueIdentifier)) ||
+        (isContextReplyToMessage(context) && isReplyToQuestion(context, this.uniqueIdentifier))
       ) {
-        const additionalState = getAdditionalState(
-          context,
-          this.uniqueIdentifier,
-        );
-        return this.answer(context, additionalState);
+        // @ts-ignore
+        return this.answer(context, context.user.scene.split('/')[0] + '/');
       }
 
       await next();
@@ -54,6 +53,7 @@ export class StatelessQuestion<Context extends BaseContext> {
     text: string,
     additionalState?: string,
   ) {
+    questions.push([context.from?.id, this.uniqueIdentifier])
     const textResult = text + this.messageSuffixHTML(additionalState);
     return context.reply(textResult, {
       reply_markup: {force_reply: true},
@@ -66,6 +66,7 @@ export class StatelessQuestion<Context extends BaseContext> {
     text: string,
     additionalState?: string,
   ) {
+    questions.push([context.from?.id, this.uniqueIdentifier])
     const textResult = text + this.messageSuffixMarkdown(additionalState);
     return context.reply(textResult, {
       reply_markup: {force_reply: true},
@@ -78,10 +79,29 @@ export class StatelessQuestion<Context extends BaseContext> {
     text: string,
     additionalState?: string,
   ) {
+    questions.push([context.from?.id, this.uniqueIdentifier])
     const textResult = text + this.messageSuffixMarkdownV2(additionalState);
     return context.reply(textResult, {
       reply_markup: {force_reply: true},
       parse_mode: 'MarkdownV2',
     });
+  }
+
+  inQuestions(id: any, need: any) {
+    for (const question of questions) {
+      if (question[0] == id && question[1] == need) {
+        questions = this.removeItemOnce(questions, question)
+        return true
+      }
+    }
+    return false
+  }
+
+  removeItemOnce(arr: any[], value: any) {
+    const index = arr.indexOf(value);
+    if (index > -1) {
+      arr.splice(index, 1);
+    }
+    return arr;
   }
 }
